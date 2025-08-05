@@ -620,8 +620,8 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     return view
 
 # This part is for local development if you run the file directly
-if __name__ == "__main__":
-    ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
+# if __name__ == "__main__":
+#     ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
 
 # This part exposes the Flet app as an ASGI application for Vercel
 app = flet.fastapi.app_async(
