@@ -9,6 +9,8 @@ import cloudinary.uploader as uploader
 from connection import supabase
 from pipeline import generate_image
 
+import flet.fastapi
+
 # --- Global State ---
 current_user = None # Will store the user's data as a dict
 
@@ -617,6 +619,12 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     view.update_theme_colors = update_theme_colors
     return view
 
-
+# This part is for local development if you run the file directly
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="src/assets")
+    ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
+
+# This part exposes the Flet app as an ASGI application for Vercel
+app = flet.fastapi.app_async(
+    main_session_handler=main,
+    assets_dir="src/assets",
+)
