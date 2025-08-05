@@ -457,7 +457,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     image_display = ft.Container(
         content=ft.ProgressRing(color=theme["primary"]),
         expand=True,
-        bgcolor=ft.colors.with_opacity(0.05, theme["text"]),
+        bgcolor=ft.Colors.with_opacity(0.05, theme["text"]),
         border_radius=12,
         alignment=ft.alignment.center,
         clip_behavior=ft.ClipBehavior.HARD_EDGE
@@ -530,7 +530,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     text_content = ft.Column(
         [
             ft.Text(book["title"], size=28, weight=ft.FontWeight.BOLD, color=theme["text"]),
-            ft.Divider(height=10, color=ft.colors.TRANSPARENT),
+            ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
             ft.Text(
                 chapters[page_index] if page_index < len(chapters) else "End of Book",
                 color=theme["text_muted"],
@@ -544,10 +544,10 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
 
     navigation_controls = ft.Row(
         [
-            ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
+            ft.IconButton(icon=ft.Icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
             ft.Text(f"{page_index + 1} / {len(chapters)}", color=theme["text_muted"]),
-            ft.IconButton(icon=ft.icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
-            ft.IconButton(icon=ft.icons.REFRESH, icon_color=theme["primary"], tooltip="Regenerate Image", on_click=regenerate_image)
+            ft.IconButton(icon=ft.Icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
+            ft.IconButton(icon=ft.Icons.REFRESH, icon_color=theme["primary"], tooltip="Regenerate Image", on_click=regenerate_image)
         ],
         alignment=ft.MainAxisAlignment.CENTER
     )
@@ -574,7 +574,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
             ft.Container(content=main_content, expand=True) # Wrap content in an expanding container
         ],
         appbar=ft.AppBar(
-            leading=ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_back),
+            leading=ft.IconButton(icon=ft.Icons.ARROW_BACK_IOS, on_click=go_back),
             bgcolor=theme["background"],
         ),
         padding=ft.padding.symmetric(horizontal=30, vertical=10),

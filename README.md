@@ -74,6 +74,9 @@ Follow these instructions to set up and run the project on your local machine fo
     CLOUDINARY_API_SECRET=your-cloudinary-api-secret
     ```
 
+5. **Set up the db scheme:**
+   * Use db scheme for supabase like in db_scheme.sql
+
 ## Usage
 
 ### Running the Application Locally
