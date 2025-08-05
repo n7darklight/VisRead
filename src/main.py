@@ -6,7 +6,7 @@ from datetime import datetime
 import cloudinary.uploader as uploader
 import logging
 import sys
-import time
+import time # ADDED: Import the time module
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -42,7 +42,7 @@ from pipeline import generate_image, create_style_guide
 current_user = None
 
 # --- UI Constants & Theming ---
-MAX_CONTENT_WIDTH = 800
+MAX_CONTENT_WIDTH = 1200 # Increased for the new layout
 
 DARK_THEME = {
     "background": "#121212",
@@ -95,9 +95,9 @@ def upload_image_to_cloudinary(image_data, public_id):
 
 def main(page: ft.Page):
     page.title = "VisRead"
-    page.window_width = 800
-    page.window_height = 720
-    page.window_min_width = 600
+    page.window_width = 1280
+    page.window_height = 800
+    page.window_min_width = 800
     page.window_min_height = 600
     page.theme_mode = ft.ThemeMode.DARK
 
@@ -132,6 +132,7 @@ def main(page: ft.Page):
 
     navigate_to("login")
 
+# (login_view, register_view, app_view, new_book_view, and history_view remain the same)
 def login_view(page, get_theme, navigate_to, toggle_theme):
     theme = get_theme()
     username_field = ft.TextField(label="Username", border_color=theme["text_muted"], color=theme["text"])
@@ -388,7 +389,6 @@ def new_book_view(page, get_theme, navigate_to):
             response = supabase.table('visread_books').insert(book_doc).execute()
             new_book_id = response.data[0]['id']
 
-            # --- Generate and save the style guide ---
             if chapters:
                 print("Generating style guide for the new book...")
                 style_guide = create_style_guide(chapters[0])
@@ -453,25 +453,29 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
 
     chapters = book.get("chapters", [])
     images = book.get("images", {})
-    image_url = images.get(str(page_index))
+    
     image_display = ft.Container(
-        ft.ProgressRing(color=theme["primary"]),
-        width=MAX_CONTENT_WIDTH, height=300, bgcolor=ft.Colors.with_opacity(0.1, theme["text"]),
-        border_radius=12, alignment=ft.alignment.center
+        content=ft.ProgressRing(color=theme["primary"]),
+        expand=True,
+        bgcolor=ft.colors.with_opacity(0.05, theme["text"]),
+        border_radius=12,
+        alignment=ft.alignment.center,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE
     )
 
     def update_image(url):
-        image_display.content = ft.Image(src=url, border_radius=12, fit=ft.ImageFit.COVER)
-        image_display.height = None
+        image_display.content = ft.Image(
+            src=url,
+            fit=ft.ImageFit.CONTAIN,
+            expand=True
+        )
         page.update()
 
     def regenerate_image(e):
-        """Forces regeneration of the current image."""
         print(f"Regenerating image for chapter {page_index + 1}...")
         image_display.content = ft.ProgressRing(color=theme["primary"])
         page.update()
 
-        # Check for and create a style guide if missing (for older books)
         if not book.get("style_guide") and chapters:
             print("No style guide found, creating one...")
             new_guide = create_style_guide(chapters[0])
@@ -480,16 +484,12 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                 supabase.table('visread_books').update({'style_guide': new_guide}).eq('id', book_id).execute()
                 print("New style guide saved.")
 
-        # Clear the old image URL from the local dictionary
         if str(page_index) in images:
             del images[str(page_index)]
         
-        # Start the generation process in a new thread
         page.run_thread(handle_image_generation)
 
-
     def handle_image_generation():
-        # This check is now inside a separate function to be called by thread
         current_image_url = images.get(str(page_index))
         if current_image_url:
             update_image(current_image_url)
@@ -500,7 +500,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
             style_guide = book.get("style_guide")
             image_data = generate_image(prompt, style_guide=style_guide)
             if image_data:
-                public_id = f"{book_id}_{page_index}_{int(time.time())}" # Add timestamp to force overwrite
+                public_id = f"{book_id}_{page_index}_{int(time.time())}"
                 new_url = upload_image_to_cloudinary(image_data, public_id)
                 if new_url:
                     images[str(page_index)] = new_url
@@ -510,7 +510,6 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                 image_display.content = ft.Text("Image generation failed.", color=theme["error"])
             page.update()
     
-    # Initial image generation when the view loads
     page.run_thread(handle_image_generation)
 
     def go_back(e):
@@ -527,57 +526,65 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
             page.views[-1] = reader_view(page, get_theme, navigate_to, book_id=book_id, page_index=page_index + 1)
             page.update()
 
+    # --- Layout Components ---
+    text_content = ft.Column(
+        [
+            ft.Text(book["title"], size=28, weight=ft.FontWeight.BOLD, color=theme["text"]),
+            ft.Divider(height=10, color=ft.colors.TRANSPARENT),
+            ft.Text(
+                chapters[page_index] if page_index < len(chapters) else "End of Book",
+                color=theme["text_muted"],
+                size=16,
+            ),
+        ],
+        spacing=20,
+        scroll=ft.ScrollMode.ADAPTIVE,
+        expand=True
+    )
+
+    navigation_controls = ft.Row(
+        [
+            ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
+            ft.Text(f"{page_index + 1} / {len(chapters)}", color=theme["text_muted"]),
+            ft.IconButton(icon=ft.icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
+            ft.IconButton(icon=ft.icons.REFRESH, icon_color=theme["primary"], tooltip="Regenerate Image", on_click=regenerate_image)
+        ],
+        alignment=ft.MainAxisAlignment.CENTER
+    )
+
+    text_column = ft.Column([
+        text_content,
+        navigation_controls
+    ], spacing=20)
+
+    image_column = ft.Column([image_display], expand=True)
+
+    # --- Responsive Layout ---
+    main_content = ft.ResponsiveRow(
+        [
+            ft.Column([text_column], col={"sm": 12, "md": 6}),
+            ft.Column([image_column], col={"sm": 12, "md": 6}),
+        ],
+        vertical_alignment=ft.CrossAxisAlignment.START, # Changed to START
+    )
+
     view = ft.View(
         f"/reader/{book_id}/{page_index}",
         [
-            ft.Row(
-                [
-                    ft.Column(
-                        [
-                            image_display,
-                            ft.Row(
-                                [
-                                    ft.Text(f"Chapter {page_index + 1}", size=24, weight=ft.FontWeight.BOLD, color=theme["text"], expand=True),
-                                    ft.IconButton(
-                                        icon=ft.Icons.REFRESH,
-                                        icon_color=theme["primary"],
-                                        tooltip="Regenerate Image",
-                                        on_click=regenerate_image
-                                    )
-                                ],
-                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-                            ),
-                            ft.Text(
-                                chapters[page_index] if page_index < len(chapters) else "End of Book",
-                                color=theme["text_muted"], text_align=ft.TextAlign.JUSTIFY
-                            ),
-                            ft.Row(
-                                [
-                                    ft.IconButton(ft.Icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
-                                    ft.IconButton(ft.Icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
-                                ],
-                                alignment=ft.MainAxisAlignment.CENTER
-                            )
-                        ],
-                        spacing=20, scroll=ft.ScrollMode.ADAPTIVE, expand=True,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER
-                    )
-                ],
-                alignment=ft.MainAxisAlignment.CENTER, expand=True
-            )
+            ft.Container(content=main_content, expand=True) # Wrap content in an expanding container
         ],
         appbar=ft.AppBar(
-            title=ft.Text(book["title"]),
-            leading=ft.IconButton(icon=ft.Icons.ARROW_BACK_IOS, on_click=go_back),
-            bgcolor=theme["surface"], color=theme["text"]
+            leading=ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_back),
+            bgcolor=theme["background"],
         ),
-        padding=20, scroll=ft.ScrollMode.ADAPTIVE, bgcolor=theme["background"]
+        padding=ft.padding.symmetric(horizontal=30, vertical=10),
+        bgcolor=theme["background"],
+        scroll=ft.ScrollMode.ADAPTIVE,
     )
     def update_theme_colors():
         theme = get_theme()
         view.bgcolor = theme["background"]
-        view.appbar.bgcolor = theme["surface"]
-        view.appbar.title.color = theme["text"]
+        view.appbar.bgcolor = theme["background"]
         view.appbar.leading.icon_color = theme["text"]
     view.update_theme_colors = update_theme_colors
     return view
