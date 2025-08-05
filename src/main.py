@@ -5,8 +5,9 @@ import bcrypt
 from datetime import datetime
 import cloudinary.uploader as uploader
 
-from .connection import supabase
-from .pipeline import generate_image
+# Use direct imports for desktop application
+from connection import supabase
+from pipeline import generate_image
 
 # --- Global State ---
 current_user = None # Will store the user's data as a dict
@@ -14,28 +15,28 @@ current_user = None # Will store the user's data as a dict
 # --- UI Constants & Theming ---
 MAX_CONTENT_WIDTH = 800
 
+# UPDATED: Changed to a true dark theme
 DARK_THEME = {
-    "background": "#201A30",
-    "surface": "#2C2440",
-    "primary": "#9F86C0",
-    "primary_content": "#FFFFFF",
+    "background": "#121212",  # Very dark gray, almost black
+    "surface": "#1E1E1E",     # Slightly lighter gray for surfaces like cards/appbar
+    "primary": "#BB86FC",     # A vibrant purple that works well on dark backgrounds
+    "primary_content": "#000000",
     "text": "#FFFFFF",
     "text_muted": ft.Colors.with_opacity(0.7, "#FFFFFF"),
-    "error": "#E57373",
+    "error": "#CF6679",
 }
 
 LIGHT_THEME = {
     "background": "#F2F2F2",
     "surface": "#FFFFFF",
-    "primary": "#5E548E",
+    "primary": "#6200EE",
     "primary_content": "#FFFFFF",
-    "text": "#231942",
-    "text_muted": ft.Colors.with_opacity(0.7, "#231942"),
-    "error": "#D32F2F",
+    "text": "#000000",
+    "text_muted": ft.Colors.with_opacity(0.6, "#000000"),
+    "error": "#B00020",
 }
 
 # --- Helper Functions ---
-
 def process_text(text):
     raw_paragraphs = re.split(r'\n\s*\n', text.strip())
     paragraphs = []
@@ -62,10 +63,18 @@ def upload_image_to_cloudinary(image_data, public_id):
         print(f"Cloudinary upload failed: {e}")
         return None
 
+# --- Main Application Logic ---
+
 def main(page: ft.Page):
+    # Set window properties for desktop
     page.title = "VisRead"
-    page.icon = "src/assets/icon.png"
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.window_width = 800
+    page.window_height = 720
+    page.window_min_width = 600
+    page.window_min_height = 600
+    
+    # Set default theme
+    page.theme_mode = ft.ThemeMode.DARK # Default to dark mode now
 
     def get_theme():
         return DARK_THEME if page.theme_mode == ft.ThemeMode.DARK else LIGHT_THEME
@@ -86,9 +95,9 @@ def main(page: ft.Page):
     def navigate_to(route_path: str, **kwargs):
         if route_path == "login":
             page.views.clear()
-            page.views.append(login_view(page, get_theme, navigate_to))
+            page.views.append(login_view(page, get_theme, navigate_to, toggle_theme))
         elif route_path == "register":
-            page.views.append(register_view(page, get_theme, navigate_to))
+            page.views.append(register_view(page, get_theme, navigate_to, toggle_theme))
         elif route_path == "app":
             page.views.clear()
             page.views.append(app_view(page, get_theme, navigate_to, toggle_theme))
@@ -98,7 +107,7 @@ def main(page: ft.Page):
 
     navigate_to("login")
 
-def login_view(page, get_theme, navigate_to):
+def login_view(page, get_theme, navigate_to, toggle_theme):
     theme = get_theme()
     username_field = ft.TextField(label="Username", border_color=theme["text_muted"], color=theme["text"])
     password_field = ft.TextField(label="Password", password=True, can_reveal_password=True, border_color=theme["text_muted"], color=theme["text"])
@@ -127,7 +136,7 @@ def login_view(page, get_theme, navigate_to):
                     ft.Container(
                         content=ft.Column(
                             [
-                                ft.Image(src="src/assets/icon.png", width=100, height=100),
+                                ft.Image(src="icon.png", width=100, height=100),
                                 ft.Text("Welcome Back!", size=32, weight=ft.FontWeight.BOLD, color=theme["text"]),
                                 username_field,
                                 password_field,
@@ -143,6 +152,17 @@ def login_view(page, get_theme, navigate_to):
                 alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True,
             )
         ],
+        appbar=ft.AppBar(
+            bgcolor=ft.Colors.TRANSPARENT,
+            elevation=0,
+            actions=[
+                ft.Switch(
+                    on_change=toggle_theme,
+                    value=page.theme_mode == ft.ThemeMode.DARK,
+                    active_color=theme["primary"]
+                )
+            ]
+        ),
         scroll=ft.ScrollMode.ADAPTIVE, vertical_alignment=ft.MainAxisAlignment.CENTER,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER, padding=20, bgcolor=theme["background"]
     )
@@ -154,14 +174,22 @@ def login_view(page, get_theme, navigate_to):
         password_field.border_color = theme["text_muted"]
         password_field.color = theme["text"]
         error_msg.color = theme["error"]
-        view.controls[0].controls[0].controls[1].color = theme["text"]
-        view.controls[0].controls[0].controls[4].style.bgcolor = theme["primary"]
-        view.controls[0].controls[0].controls[4].style.color = theme["primary_content"]
-        view.controls[0].controls[0].controls[5].style.color = theme["primary"]
+        
+        # CORRECTED PATH: Access the container's content, then its controls
+        container_content = view.controls[0].controls[0].content
+        container_content.controls[1].color = theme["text"]
+        container_content.controls[4].style.bgcolor = theme["primary"]
+        container_content.controls[4].style.color = theme["primary_content"]
+        container_content.controls[5].style.color = theme["primary"]
+        
+        if view.appbar:
+            view.appbar.actions[0].value = page.theme_mode == ft.ThemeMode.DARK
+            view.appbar.actions[0].active_color = theme["primary"]
+
     view.update_theme_colors = update_theme_colors
     return view
 
-def register_view(page, get_theme, navigate_to):
+def register_view(page, get_theme, navigate_to, toggle_theme):
     theme = get_theme()
     username_field = ft.TextField(label="Username", border_color=theme["text_muted"], color=theme["text"])
     password_field = ft.TextField(label="Password", password=True, can_reveal_password=True, border_color=theme["text_muted"], color=theme["text"])
@@ -189,7 +217,7 @@ def register_view(page, get_theme, navigate_to):
                     ft.Container(
                         content=ft.Column(
                             [
-                                ft.Image(src="src/assets/icon.png", width=100, height=100),
+                                ft.Image(src="icon.png", width=100, height=100),
                                 ft.Text("Create Account", size=32, weight=ft.FontWeight.BOLD, color=theme["text"]),
                                 username_field,
                                 password_field,
@@ -205,6 +233,17 @@ def register_view(page, get_theme, navigate_to):
                 alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True,
             )
         ],
+        appbar=ft.AppBar(
+            bgcolor=ft.Colors.TRANSPARENT,
+            elevation=0,
+            actions=[
+                ft.Switch(
+                    on_change=toggle_theme,
+                    value=page.theme_mode == ft.ThemeMode.DARK,
+                    active_color=theme["primary"]
+                )
+            ]
+        ),
         scroll=ft.ScrollMode.ADAPTIVE, vertical_alignment=ft.MainAxisAlignment.CENTER,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER, padding=20, bgcolor=theme["background"]
     )
@@ -216,10 +255,18 @@ def register_view(page, get_theme, navigate_to):
         password_field.border_color = theme["text_muted"]
         password_field.color = theme["text"]
         error_msg.color = theme["error"]
-        view.controls[0].controls[0].controls[1].color = theme["text"]
-        view.controls[0].controls[0].controls[4].style.bgcolor = theme["primary"]
-        view.controls[0].controls[0].controls[4].style.color = theme["primary_content"]
-        view.controls[0].controls[0].controls[5].style.color = theme["primary"]
+        
+        # CORRECTED PATH: Access the container's content, then its controls
+        container_content = view.controls[0].controls[0].content
+        container_content.controls[1].color = theme["text"]
+        container_content.controls[4].style.bgcolor = theme["primary"]
+        container_content.controls[4].style.color = theme["primary_content"]
+        container_content.controls[5].style.color = theme["primary"]
+        
+        if view.appbar:
+            view.appbar.actions[0].value = page.theme_mode == ft.ThemeMode.DARK
+            view.appbar.actions[0].active_color = theme["primary"]
+
     view.update_theme_colors = update_theme_colors
     return view
 
@@ -246,16 +293,16 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
         selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=100,
         min_extended_width=400, bgcolor=theme["surface"],
         destinations=[
-            ft.NavigationRailDestination(icon=ft.icons.CREATE_OUTLINED, selected_icon=ft.icons.CREATE, label="Create"),
-            ft.NavigationRailDestination(icon=ft.icons.HISTORY_OUTLINED, selected_icon=ft.icons.HISTORY, label="History"),
+            ft.NavigationRailDestination(icon=ft.Icons.CREATE_OUTLINED, selected_icon=ft.Icons.CREATE, label="Create"),
+            ft.NavigationRailDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="History"),
         ],
         on_change=nav_changed,
     )
     nav_bar = ft.NavigationBar(
         selected_index=0, bgcolor=ft.Colors.with_opacity(0.95, theme["surface"]),
         destinations=[
-            ft.NavigationBarDestination(icon=ft.icons.CREATE_OUTLINED, label="Create"),
-            ft.NavigationBarDestination(icon=ft.icons.HISTORY, label="History"),
+            ft.NavigationBarDestination(icon=ft.Icons.CREATE_OUTLINED, label="Create"),
+            ft.NavigationBarDestination(icon=ft.Icons.HISTORY, label="History"),
         ],
         on_change=nav_changed,
     )
@@ -278,8 +325,8 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
             title=ft.Text("VisRead", weight=ft.FontWeight.BOLD, color=theme["text"]),
             bgcolor=theme["surface"],
             actions=[
-                ft.Switch(on_change=toggle_theme, value=page.theme_mode == ft.ThemeMode.LIGHT, active_color=theme["primary"]),
-                ft.IconButton(ft.icons.LOGOUT, on_click=lambda e: navigate_to("login"), icon_color=theme["text_muted"])
+                ft.Switch(on_change=toggle_theme, value=page.theme_mode == ft.ThemeMode.DARK, active_color=theme["primary"]),
+                ft.IconButton(ft.Icons.LOGOUT, on_click=lambda e: navigate_to("login"), icon_color=theme["text_muted"])
             ]
         ),
         padding=0, bgcolor=theme["background"]
@@ -289,6 +336,7 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
         view.bgcolor = theme["background"]
         view.appbar.bgcolor = theme["surface"]
         view.appbar.title.color = theme["text"]
+        view.appbar.actions[0].value = page.theme_mode == ft.ThemeMode.DARK
         view.appbar.actions[1].icon_color = theme["text_muted"]
         nav_rail.bgcolor = theme["surface"]
         nav_bar.bgcolor = ft.Colors.with_opacity(0.95, theme["surface"])
@@ -347,7 +395,7 @@ def history_view(page, get_theme, navigate_to):
                     title=ft.Text(book.get('title', 'No Title'), color=theme["text"]),
                     subtitle=ft.Text(f"by {book.get('author', 'Unknown Author')}", color=theme["text_muted"]),
                     on_click=lambda e, bid=book["id"]: navigate_to("reader", book_id=bid, page_index=0),
-                    trailing=ft.Icon(ft.icons.ARROW_FORWARD_IOS, color=theme["text_muted"]),
+                    trailing=ft.Icon(ft.Icons.ARROW_FORWARD_IOS, color=theme["text_muted"]),
                 ),
                 padding=ft.padding.symmetric(vertical=5)
             ),
@@ -434,8 +482,8 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                             ),
                             ft.Row(
                                 [
-                                    ft.IconButton(ft.icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
-                                    ft.IconButton(ft.icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
+                                    ft.IconButton(ft.Icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
+                                    ft.IconButton(ft.Icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
                                 ],
                                 alignment=ft.MainAxisAlignment.CENTER
                             )
@@ -449,7 +497,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
         ],
         appbar=ft.AppBar(
             title=ft.Text(book["title"]),
-            leading=ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_back),
+            leading=ft.IconButton(icon=ft.Icons.ARROW_BACK_IOS, on_click=go_back),
             bgcolor=theme["surface"], color=theme["text"]
         ),
         padding=20, scroll=ft.ScrollMode.ADAPTIVE, bgcolor=theme["background"]
@@ -463,16 +511,9 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     view.update_theme_colors = update_theme_colors
     return view
 
-# --- Vercel Deployment Section ---
-import flet.fastapi
-
-# This part is for local development if you run the file directly
+# --- Application Entry Point for Desktop ---
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
-
-# This part exposes the Flet app as an ASGI application for Vercel
-# Use the correct flet.fastapi.app function
-app = flet.fastapi.app(
-    main,
-    assets_dir="src/assets"
-)
+    ft.app(
+        target=main,
+        assets_dir="src/assets"
+    )
