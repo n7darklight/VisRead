@@ -3,6 +3,7 @@ import shutil
 import platform
 import subprocess
 import sys
+import importlib.util
 
 def main():
     """
@@ -23,18 +24,26 @@ def main():
     print(f"Detected Platform: {system.capitalize()}")
     print(f"Starting build for {app_name}...")
 
+    # --- Find gradio_client path to include its data files ---
+    gradio_client_spec = importlib.util.find_spec("gradio_client")
+    if gradio_client_spec is None:
+        print("Error: 'gradio_client' package not found. Please install it.")
+        return
+        
+    gradio_client_path = os.path.dirname(gradio_client_spec.origin)
+    
     # --- Construct the build command for the Flet CLI ---
-    # Determine the correct path separator for --add-data
     separator = ";" if system == "windows" else ":"
 
-    # CORRECTED: Use 'flet pack' with '--add-data' instead of '--assets'
     command = [
         "flet",
         "pack",
         entry_point,
         "--distpath", "dist",
         "--name", app_name,
-        "--add-data", f"{assets_dir}{separator}assets",
+        "--add-data", f"{assets_dir}{separator}src/assets",
+        # FIX: Explicitly include the gradio_client's data files
+        "--add-data", f"{gradio_client_path}{separator}gradio_client",
         "--icon", "src/assets/icon.png",
     ]
 
@@ -44,7 +53,6 @@ def main():
 
     # --- Execute the build command ---
     try:
-        # On Windows, shell=True can help find commands in the venv path.
         is_windows = system == "windows"
         subprocess.run(command, check=True, shell=is_windows)
         print("\n-----------------------------------------")
@@ -63,13 +71,10 @@ def main():
 
 
 if __name__ == "__main__":
-    # Clean up previous build directory if it exists
     if os.path.exists("dist"):
         print("Removing previous build directory...")
         shutil.rmtree("dist")
 
-    # --- Auto-configure splash screen for the new Flet build process ---
-    # Flet's build process now automatically looks for 'assets/images/splash.png'.
     splash_dir = os.path.join("src", "assets", "images")
     splash_file_path = os.path.join(splash_dir, "splash.png")
     icon_file_path = os.path.join("src", "assets", "icon.png")

@@ -4,22 +4,50 @@ import re
 import bcrypt
 from datetime import datetime
 import cloudinary.uploader as uploader
+import logging
+import sys
+import time
+
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("visread_debug.log", mode='w', encoding='utf-8')
+    ]
+)
+
+class StreamToLogger:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+        self.linebuf = ''
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.level, line.rstrip())
+    def flush(self):
+        pass
+
+sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO)
+sys.stderr = StreamToLogger(logging.getLogger(), logging.ERROR)
+
+print("--- Application starting up ---")
+
 
 # Use direct imports for desktop application
 from connection import supabase
-from pipeline import generate_image
+from pipeline import generate_image, create_style_guide
 
 # --- Global State ---
-current_user = None # Will store the user's data as a dict
+current_user = None
 
 # --- UI Constants & Theming ---
 MAX_CONTENT_WIDTH = 800
 
-# UPDATED: Changed to a true dark theme
 DARK_THEME = {
-    "background": "#121212",  # Very dark gray, almost black
-    "surface": "#1E1E1E",     # Slightly lighter gray for surfaces like cards/appbar
-    "primary": "#BB86FC",     # A vibrant purple that works well on dark backgrounds
+    "background": "#121212",
+    "surface": "#1E1E1E",
+    "primary": "#BB86FC",
     "primary_content": "#000000",
     "text": "#FFFFFF",
     "text_muted": ft.Colors.with_opacity(0.7, "#FFFFFF"),
@@ -66,15 +94,12 @@ def upload_image_to_cloudinary(image_data, public_id):
 # --- Main Application Logic ---
 
 def main(page: ft.Page):
-    # Set window properties for desktop
     page.title = "VisRead"
     page.window_width = 800
     page.window_height = 720
     page.window_min_width = 600
     page.window_min_height = 600
-    
-    # Set default theme
-    page.theme_mode = ft.ThemeMode.DARK # Default to dark mode now
+    page.theme_mode = ft.ThemeMode.DARK
 
     def get_theme():
         return DARK_THEME if page.theme_mode == ft.ThemeMode.DARK else LIGHT_THEME
@@ -175,7 +200,6 @@ def login_view(page, get_theme, navigate_to, toggle_theme):
         password_field.color = theme["text"]
         error_msg.color = theme["error"]
         
-        # CORRECTED PATH: Access the container's content, then its controls
         container_content = view.controls[0].controls[0].content
         container_content.controls[1].color = theme["text"]
         container_content.controls[4].style.bgcolor = theme["primary"]
@@ -256,7 +280,6 @@ def register_view(page, get_theme, navigate_to, toggle_theme):
         password_field.color = theme["text"]
         error_msg.color = theme["error"]
         
-        # CORRECTED PATH: Access the container's content, then its controls
         container_content = view.controls[0].controls[0].content
         container_content.controls[1].color = theme["text"]
         container_content.controls[4].style.bgcolor = theme["primary"]
@@ -364,6 +387,15 @@ def new_book_view(page, get_theme, navigate_to):
         try:
             response = supabase.table('visread_books').insert(book_doc).execute()
             new_book_id = response.data[0]['id']
+
+            # --- Generate and save the style guide ---
+            if chapters:
+                print("Generating style guide for the new book...")
+                style_guide = create_style_guide(chapters[0])
+                if style_guide:
+                    supabase.table('visread_books').update({'style_guide': style_guide}).eq('id', new_book_id).execute()
+                    print("Style guide saved successfully.")
+
             navigate_to("reader", book_id=new_book_id, page_index=0)
         except Exception as ex:
             error_msg.value = f"Failed to create book: {ex}"
@@ -433,15 +465,42 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
         image_display.height = None
         page.update()
 
+    def regenerate_image(e):
+        """Forces regeneration of the current image."""
+        print(f"Regenerating image for chapter {page_index + 1}...")
+        image_display.content = ft.ProgressRing(color=theme["primary"])
+        page.update()
+
+        # Check for and create a style guide if missing (for older books)
+        if not book.get("style_guide") and chapters:
+            print("No style guide found, creating one...")
+            new_guide = create_style_guide(chapters[0])
+            if new_guide:
+                book['style_guide'] = new_guide
+                supabase.table('visread_books').update({'style_guide': new_guide}).eq('id', book_id).execute()
+                print("New style guide saved.")
+
+        # Clear the old image URL from the local dictionary
+        if str(page_index) in images:
+            del images[str(page_index)]
+        
+        # Start the generation process in a new thread
+        page.run_thread(handle_image_generation)
+
+
     def handle_image_generation():
-        if image_url:
-            update_image(image_url)
+        # This check is now inside a separate function to be called by thread
+        current_image_url = images.get(str(page_index))
+        if current_image_url:
+            update_image(current_image_url)
             return
+
         if page_index < len(chapters):
             prompt = chapters[page_index]
-            image_data = generate_image(prompt)
+            style_guide = book.get("style_guide")
+            image_data = generate_image(prompt, style_guide=style_guide)
             if image_data:
-                public_id = f"{book_id}_{page_index}"
+                public_id = f"{book_id}_{page_index}_{int(time.time())}" # Add timestamp to force overwrite
                 new_url = upload_image_to_cloudinary(image_data, public_id)
                 if new_url:
                     images[str(page_index)] = new_url
@@ -451,6 +510,7 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                 image_display.content = ft.Text("Image generation failed.", color=theme["error"])
             page.update()
     
+    # Initial image generation when the view loads
     page.run_thread(handle_image_generation)
 
     def go_back(e):
@@ -475,7 +535,18 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                     ft.Column(
                         [
                             image_display,
-                            ft.Text(f"Chapter {page_index + 1}", size=24, weight=ft.FontWeight.BOLD, color=theme["text"]),
+                            ft.Row(
+                                [
+                                    ft.Text(f"Chapter {page_index + 1}", size=24, weight=ft.FontWeight.BOLD, color=theme["text"], expand=True),
+                                    ft.IconButton(
+                                        icon=ft.Icons.REFRESH,
+                                        icon_color=theme["primary"],
+                                        tooltip="Regenerate Image",
+                                        on_click=regenerate_image
+                                    )
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                            ),
                             ft.Text(
                                 chapters[page_index] if page_index < len(chapters) else "End of Book",
                                 color=theme["text_muted"], text_align=ft.TextAlign.JUSTIFY
