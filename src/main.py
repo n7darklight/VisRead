@@ -5,11 +5,8 @@ import bcrypt
 from datetime import datetime
 import cloudinary.uploader as uploader
 
-# Import the initialized Supabase client
 from .connection import supabase
 from .pipeline import generate_image
-
-import flet.fastapi
 
 # --- Global State ---
 current_user = None # Will store the user's data as a dict
@@ -17,7 +14,6 @@ current_user = None # Will store the user's data as a dict
 # --- UI Constants & Theming ---
 MAX_CONTENT_WIDTH = 800
 
-# Corrected with_opacity usage
 DARK_THEME = {
     "background": "#201A30",
     "surface": "#2C2440",
@@ -41,10 +37,6 @@ LIGHT_THEME = {
 # --- Helper Functions ---
 
 def process_text(text):
-    """
-    Splits text into paragraphs. Merges paragraphs that start with a quotation mark
-    with the previous one, treating them as continuing dialogue.
-    """
     raw_paragraphs = re.split(r'\n\s*\n', text.strip())
     paragraphs = []
     for p in raw_paragraphs:
@@ -58,9 +50,6 @@ def process_text(text):
     return paragraphs
 
 def upload_image_to_cloudinary(image_data, public_id):
-    """
-    Uploads image data to Cloudinary.
-    """
     try:
         result = uploader.upload(
             image_data,
@@ -73,105 +62,17 @@ def upload_image_to_cloudinary(image_data, public_id):
         print(f"Cloudinary upload failed: {e}")
         return None
 
-# --- Reusable UI Components ---
-
-class AppLayout(ft.Row):
-    """The main layout of the app with persistent navigation."""
-    def __init__(self, page: ft.Page, get_theme, navigate_to):
-        super().__init__(expand=True)
-        self.page = page
-        self.get_theme = get_theme
-        self.navigate_to = navigate_to
-        self.current_theme = self.get_theme()
-
-        self.content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
-        
-        self.nav_rail = ft.NavigationRail(
-            selected_index=0,
-            label_type=ft.NavigationRailLabelType.ALL,
-            min_width=100,
-            min_extended_width=400,
-            destinations=[
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.CREATE_OUTLINED, selected_icon=ft.Icons.CREATE, label="Create"
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="History"
-                ),
-            ],
-            on_change=self.nav_changed,
-        )
-        
-        self.nav_bar = ft.NavigationBar(
-            selected_index=0,
-            destinations=[
-                ft.NavigationBarDestination(icon=ft.Icons.CREATE_OUTLINED, label="Create"),
-                ft.NavigationBarDestination(icon=ft.Icons.HISTORY, label="History"),
-            ],
-            on_change=self.nav_changed,
-        )
-        
-        self.update_navigation()
-        self.update_theme()
-        self.show_content(0)
-
-    def build(self):
-        self.page.on_resize = self.on_resize
-        return self
-
-    def on_resize(self, e):
-        self.update_navigation()
-        self.page.update()
-
-    def update_navigation(self):
-        is_wide = self.page.width >= 768
-        self.controls.clear()
-        self.controls.extend([self.nav_rail if is_wide else ft.Container(), self.content_area])
-        self.page.navigation_bar = self.nav_bar if not is_wide else None
-
-    def nav_changed(self, e):
-        selected_index = e.control.selected_index
-        self.nav_rail.selected_index = selected_index
-        self.nav_bar.selected_index = selected_index
-        self.show_content(selected_index)
-        self.page.update()
-
-    def show_content(self, index):
-        self.content_area.controls.clear()
-        content_view = new_book_view(self.page, self.get_theme, self.navigate_to) if index == 0 else history_view(self.page, self.get_theme, self.navigate_to)
-        self.content_area.controls.append(
-            ft.Row([content_view], alignment=ft.MainAxisAlignment.CENTER, expand=True)
-        )
-    
-    def update_theme(self):
-        self.current_theme = self.get_theme()
-        theme = self.current_theme
-        self.nav_rail.bgcolor = theme["surface"]
-        self.nav_bar.bgcolor = ft.Colors.with_opacity(0.95, theme["surface"])
-        for dest in self.nav_rail.destinations:
-            dest.icon_content.color = theme["text_muted"]
-            dest.selected_icon_content.color = theme["primary"]
-            dest.label_content.color = theme["text"]
-        for dest in self.nav_bar.destinations:
-            dest.icon_content.color = theme["text_muted"]
-
-
-# --- Main Application ---
 def main(page: ft.Page):
     page.title = "VisRead"
     page.icon = "src/assets/icon.png"
-    # Set default theme to light mode as requested
     page.theme_mode = ft.ThemeMode.LIGHT
 
     def get_theme():
         return DARK_THEME if page.theme_mode == ft.ThemeMode.DARK else LIGHT_THEME
 
     def update_all_themes():
-        """Updates theme for all components on the page."""
         theme = get_theme()
         page.bgcolor = theme["background"]
-        
-        # Update theme for all visible views
         for view in page.views:
             view.bgcolor = theme["background"]
             if hasattr(view, 'update_theme_colors'):
@@ -182,7 +83,6 @@ def main(page: ft.Page):
         page.theme_mode = ft.ThemeMode.LIGHT if page.theme_mode == ft.ThemeMode.DARK else ft.ThemeMode.DARK
         update_all_themes()
 
-    # --- Navigation Logic ---
     def navigate_to(route_path: str, **kwargs):
         if route_path == "login":
             page.views.clear()
@@ -194,13 +94,10 @@ def main(page: ft.Page):
             page.views.append(app_view(page, get_theme, navigate_to, toggle_theme))
         elif route_path == "reader":
             page.views.append(reader_view(page, get_theme, navigate_to, **kwargs))
-        
         page.update()
 
-    # Start the app at the login screen
     navigate_to("login")
 
-# --- Authentication Views ---
 def login_view(page, get_theme, navigate_to):
     theme = get_theme()
     username_field = ft.TextField(label="Username", border_color=theme["text_muted"], color=theme["text"])
@@ -238,23 +135,16 @@ def login_view(page, get_theme, navigate_to):
                                 ft.TextButton("Don't have an account? Register", on_click=lambda e: navigate_to("register"), style=ft.ButtonStyle(color=theme["primary"])),
                                 error_msg,
                             ],
-                            spacing=20,
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        width=min(400, page.width - 40 if page.width else 400),
-                        padding=20,
+                        width=min(400, page.width - 40 if page.width else 400), padding=20,
                     )
                 ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                expand=True,
+                alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True,
             )
         ],
-        scroll=ft.ScrollMode.ADAPTIVE,
-        vertical_alignment=ft.MainAxisAlignment.CENTER,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        padding=20,
-        bgcolor=theme["background"]
+        scroll=ft.ScrollMode.ADAPTIVE, vertical_alignment=ft.MainAxisAlignment.CENTER,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER, padding=20, bgcolor=theme["background"]
     )
     def update_theme_colors():
         theme = get_theme()
@@ -268,8 +158,6 @@ def login_view(page, get_theme, navigate_to):
         view.controls[0].controls[0].controls[4].style.bgcolor = theme["primary"]
         view.controls[0].controls[0].controls[4].style.color = theme["primary_content"]
         view.controls[0].controls[0].controls[5].style.color = theme["primary"]
-
-
     view.update_theme_colors = update_theme_colors
     return view
 
@@ -309,23 +197,16 @@ def register_view(page, get_theme, navigate_to):
                                 ft.TextButton("Back to Login", on_click=lambda e: page.views.pop() and page.update(), style=ft.ButtonStyle(color=theme["primary"])),
                                 error_msg,
                             ],
-                            spacing=20,
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        width=min(400, page.width - 40 if page.width else 400),
-                        padding=20,
+                        width=min(400, page.width - 40 if page.width else 400), padding=20,
                     )
                 ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                expand=True,
+                alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True,
             )
         ],
-        scroll=ft.ScrollMode.ADAPTIVE,
-        vertical_alignment=ft.MainAxisAlignment.CENTER,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        padding=20,
-        bgcolor=theme["background"]
+        scroll=ft.ScrollMode.ADAPTIVE, vertical_alignment=ft.MainAxisAlignment.CENTER,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER, padding=20, bgcolor=theme["background"]
     )
     def update_theme_colors():
         theme = get_theme()
@@ -339,15 +220,11 @@ def register_view(page, get_theme, navigate_to):
         view.controls[0].controls[0].controls[4].style.bgcolor = theme["primary"]
         view.controls[0].controls[0].controls[4].style.color = theme["primary_content"]
         view.controls[0].controls[0].controls[5].style.color = theme["primary"]
-
     view.update_theme_colors = update_theme_colors
     return view
 
-
-# --- Main App View ---
 def app_view(page, get_theme, navigate_to, toggle_theme):
     theme = get_theme()
-    
     content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
     def show_content(index):
@@ -366,28 +243,22 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
         show_content(selected_index)
 
     nav_rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=100,
-        min_extended_width=400,
-        bgcolor=theme["surface"],
+        selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=100,
+        min_extended_width=400, bgcolor=theme["surface"],
         destinations=[
-            ft.NavigationRailDestination(icon=ft.Icons.CREATE_OUTLINED, selected_icon=ft.Icons.CREATE, label="Create"),
-            ft.NavigationRailDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="History"),
+            ft.NavigationRailDestination(icon=ft.icons.CREATE_OUTLINED, selected_icon=ft.icons.CREATE, label="Create"),
+            ft.NavigationRailDestination(icon=ft.icons.HISTORY_OUTLINED, selected_icon=ft.icons.HISTORY, label="History"),
         ],
         on_change=nav_changed,
     )
-    
     nav_bar = ft.NavigationBar(
-        selected_index=0,
-        bgcolor=ft.Colors.with_opacity(0.95, theme["surface"]),
+        selected_index=0, bgcolor=ft.Colors.with_opacity(0.95, theme["surface"]),
         destinations=[
-            ft.NavigationBarDestination(icon=ft.Icons.CREATE_OUTLINED, label="Create"),
-            ft.NavigationBarDestination(icon=ft.Icons.HISTORY, label="History"),
+            ft.NavigationBarDestination(icon=ft.icons.CREATE_OUTLINED, label="Create"),
+            ft.NavigationBarDestination(icon=ft.icons.HISTORY, label="History"),
         ],
         on_change=nav_changed,
     )
-
     main_layout = ft.Row([nav_rail, ft.VerticalDivider(width=1), content_area], expand=True)
 
     def update_layout_for_resize():
@@ -408,13 +279,11 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
             bgcolor=theme["surface"],
             actions=[
                 ft.Switch(on_change=toggle_theme, value=page.theme_mode == ft.ThemeMode.LIGHT, active_color=theme["primary"]),
-                ft.IconButton(ft.Icons.LOGOUT, on_click=lambda e: navigate_to("login"), icon_color=theme["text_muted"])
+                ft.IconButton(ft.icons.LOGOUT, on_click=lambda e: navigate_to("login"), icon_color=theme["text_muted"])
             ]
         ),
-        padding=0,
-        bgcolor=theme["background"]
+        padding=0, bgcolor=theme["background"]
     )
-    
     def update_theme_colors():
         theme = get_theme()
         view.bgcolor = theme["background"]
@@ -423,14 +292,10 @@ def app_view(page, get_theme, navigate_to, toggle_theme):
         view.appbar.actions[1].icon_color = theme["text_muted"]
         nav_rail.bgcolor = theme["surface"]
         nav_bar.bgcolor = ft.Colors.with_opacity(0.95, theme["surface"])
-        # Update other theme-dependent controls if necessary
         show_content(nav_rail.selected_index)
-
     view.update_theme_colors = update_theme_colors
     return view
 
-
-# --- Content Views ---
 def new_book_view(page, get_theme, navigate_to):
     theme = get_theme()
     title_field = ft.TextField(label="Book Title", border_color=theme["text_muted"], color=theme["text"])
@@ -443,7 +308,6 @@ def new_book_view(page, get_theme, navigate_to):
             error_msg.value = "Title and content are required."
             page.update()
             return
-
         chapters = process_text(content_field.value)
         book_doc = {
             "title": title_field.value, "author": author_field.value, "chapters": chapters,
@@ -463,11 +327,8 @@ def new_book_view(page, get_theme, navigate_to):
             title_field, author_field, content_field,
             ft.ElevatedButton("Generate Book", on_click=on_submit, style=ft.ButtonStyle(bgcolor=theme["primary"], color=theme["primary_content"])),
             error_msg
-        ], spacing=15,
-        horizontal_alignment=ft.CrossAxisAlignment.STRETCH, scroll=ft.ScrollMode.ADAPTIVE),
-        padding=20,
-        alignment=ft.alignment.top_center,
-        expand=True
+        ], spacing=15, horizontal_alignment=ft.CrossAxisAlignment.STRETCH, scroll=ft.ScrollMode.ADAPTIVE),
+        padding=20, alignment=ft.alignment.top_center, expand=True
     )
 
 def history_view(page, get_theme, navigate_to):
@@ -486,7 +347,7 @@ def history_view(page, get_theme, navigate_to):
                     title=ft.Text(book.get('title', 'No Title'), color=theme["text"]),
                     subtitle=ft.Text(f"by {book.get('author', 'Unknown Author')}", color=theme["text_muted"]),
                     on_click=lambda e, bid=book["id"]: navigate_to("reader", book_id=bid, page_index=0),
-                    trailing=ft.Icon(ft.Icons.ARROW_FORWARD_IOS, color=theme["text_muted"]),
+                    trailing=ft.Icon(ft.icons.ARROW_FORWARD_IOS, color=theme["text_muted"]),
                 ),
                 padding=ft.padding.symmetric(vertical=5)
             ),
@@ -499,9 +360,7 @@ def history_view(page, get_theme, navigate_to):
             ft.Text("Reading History", size=24, weight=ft.FontWeight.BOLD, color=theme["text"]),
             *controls
         ], spacing=10, scroll=ft.ScrollMode.ADAPTIVE),
-        padding=20,
-        expand=True,
-        alignment=ft.alignment.top_center
+        padding=20, expand=True, alignment=ft.alignment.top_center
     )
 
 def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0):
@@ -515,26 +374,21 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
     chapters = book.get("chapters", [])
     images = book.get("images", {})
     image_url = images.get(str(page_index))
-    
     image_display = ft.Container(
         ft.ProgressRing(color=theme["primary"]),
-        width=MAX_CONTENT_WIDTH,
-        height=300,
-        bgcolor=ft.Colors.with_opacity(0.1, theme["text"]),
-        border_radius=12,
-        alignment=ft.alignment.center
+        width=MAX_CONTENT_WIDTH, height=300, bgcolor=ft.Colors.with_opacity(0.1, theme["text"]),
+        border_radius=12, alignment=ft.alignment.center
     )
 
     def update_image(url):
         image_display.content = ft.Image(src=url, border_radius=12, fit=ft.ImageFit.COVER)
-        image_display.height = None # Let it size automatically
+        image_display.height = None
         page.update()
 
     def handle_image_generation():
         if image_url:
             update_image(image_url)
             return
-
         if page_index < len(chapters):
             prompt = chapters[page_index]
             image_data = generate_image(prompt)
@@ -576,55 +430,49 @@ def reader_view(page, get_theme, navigate_to, book_id: int, page_index: int = 0)
                             ft.Text(f"Chapter {page_index + 1}", size=24, weight=ft.FontWeight.BOLD, color=theme["text"]),
                             ft.Text(
                                 chapters[page_index] if page_index < len(chapters) else "End of Book",
-                                color=theme["text_muted"],
-                                text_align=ft.TextAlign.JUSTIFY
+                                color=theme["text_muted"], text_align=ft.TextAlign.JUSTIFY
                             ),
                             ft.Row(
                                 [
-                                    ft.IconButton(ft.Icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
-                                    ft.IconButton(ft.Icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
+                                    ft.IconButton(ft.icons.ARROW_BACK_IOS, on_click=go_prev, disabled=page_index == 0),
+                                    ft.IconButton(ft.icons.ARROW_FORWARD_IOS, on_click=go_next, disabled=page_index + 1 >= len(chapters)),
                                 ],
                                 alignment=ft.MainAxisAlignment.CENTER
                             )
                         ],
-                        spacing=20,
-                        scroll=ft.ScrollMode.ADAPTIVE,
-                        expand=True,
+                        spacing=20, scroll=ft.ScrollMode.ADAPTIVE, expand=True,
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER
                     )
                 ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                expand=True
+                alignment=ft.MainAxisAlignment.CENTER, expand=True
             )
         ],
         appbar=ft.AppBar(
             title=ft.Text(book["title"]),
-            leading=ft.IconButton(icon=ft.Icons.ARROW_BACK_IOS, on_click=go_back),
-            bgcolor=theme["surface"],
-            color=theme["text"]
+            leading=ft.IconButton(icon=ft.icons.ARROW_BACK_IOS, on_click=go_back),
+            bgcolor=theme["surface"], color=theme["text"]
         ),
-        padding=20,
-        scroll=ft.ScrollMode.ADAPTIVE,
-        bgcolor=theme["background"]
+        padding=20, scroll=ft.ScrollMode.ADAPTIVE, bgcolor=theme["background"]
     )
-    
     def update_theme_colors():
         theme = get_theme()
         view.bgcolor = theme["background"]
         view.appbar.bgcolor = theme["surface"]
         view.appbar.title.color = theme["text"]
         view.appbar.leading.icon_color = theme["text"]
-        # Update other theme-dependent controls if necessary
-    
     view.update_theme_colors = update_theme_colors
     return view
 
+# --- Vercel Deployment Section ---
+import flet.fastapi
+
 # This part is for local development if you run the file directly
-# if __name__ == "__main__":
-#     ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
+if __name__ == "__main__":
+    ft.app(target=main, assets_dir="src/assets", view=ft.AppView.WEB_BROWSER)
 
 # This part exposes the Flet app as an ASGI application for Vercel
-app = flet.fastapi.app_async(
-    main_session_handler=main,
-    assets_dir="src/assets",
+# Use the correct flet.fastapi.app function
+app = flet.fastapi.app(
+    main,
+    assets_dir="src/assets"
 )
