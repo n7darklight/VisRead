@@ -1,3 +1,5 @@
+# src/pipeline.py
+
 import io
 import os
 import requests
@@ -5,42 +7,48 @@ from PIL import Image
 from gradio_client import Client
 import google.generativeai as genai
 
-# --- Client Initializations ---
+# --- Client Initializations (set to None initially) ---
+flux_client = None
+gemma_model = None
+imagen_model = None
+google_ai_configured = False
 
-# Primary Client
-#flux_client = Client("black-forest-labs/FLUX.1-dev")
-flux_client = Client("black-forest-labs/FLUX.1-Krea-dev")
-
-# Fallback Client (Google AI)
-try:
-    GOOGLE_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
-    genai.configure(api_key=GOOGLE_API_KEY)
+def ensure_google_ai_configured():
+    """Ensures Google AI is configured, but only runs once."""
+    global gemma_model, imagen_model, google_ai_configured
+    if google_ai_configured:
+        return
     
-    # Model for prompt enhancement
-    gemma_model = genai.GenerativeModel('gemma-3-27b-it')
-    
-    # Model for image generation (fallback)
-    imagen_model = genai.GenerativeModel('gemini-2.0-flash-preview-image-generation')
+    print("--- Configuring Google AI for the first time ---")
+    try:
+        GOOGLE_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
+        if not GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_AI_API_KEY environment variable not set.")
+            
+        genai.configure(api_key=GOOGLE_API_KEY)
+        gemma_model = genai.GenerativeModel('gemma-3-27b-it')
+        imagen_model = genai.GenerativeModel('gemini-2.0-flash-preview-image-generation')
+        google_ai_configured = True
+        print("--- Google AI Configured Successfully ---")
+    except Exception as e:
+        print(f"Warning: Could not configure Google AI. Fallback services will be unavailable. Error: {e}")
+        # Set to False so it might retry on a subsequent request if it was a temp issue
+        google_ai_configured = False
 
-except Exception as e:
-    print(f"Warning: Could not configure Google AI. Fallback services will be unavailable. Error: {e}")
-    gemma_model = None
-    imagen_model = None
-
-# --- Helper Functions ---
 
 def enhance_prompt_with_gemma(paragraph: str) -> str:
-    """
-    Uses Google's Gemma model to generate a descriptive, artistic image prompt.
-    """
+    """Uses Google's Gemma model to generate a descriptive, artistic image prompt."""
+    ensure_google_ai_configured()
     if not gemma_model:
         print("Gemma model not available. Using original paragraph as prompt.")
         return paragraph
 
     print("--- Enhancing Prompt with Gemma ---")
     try:
+        # (The rest of your enhance_prompt_with_gemma function remains the same)
         instructional_prompt = (
             "Based on the following paragraph from a story, create a single, vivid, and artistic image prompt. "
+            "Focus on the visual details, a an artistic image prompt. "
             "Focus on the visual details, the atmosphere, the characters' appearance, and the setting. "
             "The prompt should be in English and formatted as a single, continuous sentence or a short paragraph suitable for an advanced text-to-image AI model. "
             "Do not add any explanations or introductory text. Just provide the prompt itself.\n\n"
@@ -53,7 +61,13 @@ def enhance_prompt_with_gemma(paragraph: str) -> str:
         return paragraph
 
 def generate_with_flux(prompt: str) -> bytes:
-    """Generates an image using the primary FLUX/Gradio client."""
+    """Generates an image using the primary FLUX/Gradio client (with lazy loading)."""
+    global flux_client
+    if flux_client is None:
+        print("--- Initializing FLUX.1 client for the first time ---")
+        flux_client = Client("black-forest-labs/FLUX.1-Krea-dev")
+        print("--- FLUX.1 Client Initialized ---")
+
     print("--- Attempting Image Generation with FLUX.1 ---")
     result = flux_client.predict(prompt=prompt)
     if isinstance(result, tuple):
@@ -65,7 +79,8 @@ def generate_with_flux(prompt: str) -> bytes:
         return f.read()
 
 def generate_with_gemini(prompt: str) -> bytes:
-    """Fallback function to generate an image using Gemini."""
+    """Fallback function to generate an image using Gemini (with lazy loading)."""
+    ensure_google_ai_configured()
     if not imagen_model:
         raise Exception("Gemini (Imagen) model is not available.")
     
