@@ -1,0 +1,9 @@
+flet
+supabase
+cloudinary
+bcrypt
+gradio_client
+python-dotenv
+google-generativeai
+requests
+Pillow
