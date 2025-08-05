@@ -6,8 +6,8 @@ from datetime import datetime
 import cloudinary.uploader as uploader
 
 # Import the initialized Supabase client
-from connection import supabase
-from pipeline import generate_image
+from .connection import supabase
+from .pipeline import generate_image
 
 import flet.fastapi
 
