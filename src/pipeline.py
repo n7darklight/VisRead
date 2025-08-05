@@ -4,51 +4,39 @@ import io
 import os
 import requests
 from PIL import Image
-from gradio_client import Client
-import google.generativeai as genai
 
-# --- Client Initializations (set to None initially) ---
+# --- Globals to hold initialized clients ---
+# We keep them in the global scope to reuse them after the first load.
 flux_client = None
 gemma_model = None
 imagen_model = None
-google_ai_configured = False
-
-def ensure_google_ai_configured():
-    """Ensures Google AI is configured, but only runs once."""
-    global gemma_model, imagen_model, google_ai_configured
-    if google_ai_configured:
-        return
-    
-    print("--- Configuring Google AI for the first time ---")
-    try:
-        GOOGLE_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
-        if not GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_AI_API_KEY environment variable not set.")
-            
-        genai.configure(api_key=GOOGLE_API_KEY)
-        gemma_model = genai.GenerativeModel('gemma-3-27b-it')
-        imagen_model = genai.GenerativeModel('gemini-2.0-flash-preview-image-generation')
-        google_ai_configured = True
-        print("--- Google AI Configured Successfully ---")
-    except Exception as e:
-        print(f"Warning: Could not configure Google AI. Fallback services will be unavailable. Error: {e}")
-        # Set to False so it might retry on a subsequent request if it was a temp issue
-        google_ai_configured = False
-
 
 def enhance_prompt_with_gemma(paragraph: str) -> str:
-    """Uses Google's Gemma model to generate a descriptive, artistic image prompt."""
-    ensure_google_ai_configured()
-    if not gemma_model:
-        print("Gemma model not available. Using original paragraph as prompt.")
-        return paragraph
+    """
+    Enhances a prompt using the Gemma model.
+    It will only import and initialize the model on the first run.
+    """
+    global gemma_model
+    
+    # Lazy load and initialize on first call
+    if gemma_model is None:
+        print("--- First time initialization: Importing google.generativeai and configuring Gemma ---")
+        import google.generativeai as genai
+        try:
+            GOOGLE_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
+            if not GOOGLE_API_KEY:
+                raise ValueError("GOOGLE_AI_API_KEY is not set.")
+            genai.configure(api_key=GOOGLE_API_KEY)
+            gemma_model = genai.GenerativeModel('gemma-3-27b-it')
+            print("--- Gemma configured successfully ---")
+        except Exception as e:
+            print(f"Error configuring Google AI: {e}")
+            return paragraph # Return original paragraph if setup fails
 
     print("--- Enhancing Prompt with Gemma ---")
     try:
-        # (The rest of your enhance_prompt_with_gemma function remains the same)
         instructional_prompt = (
             "Based on the following paragraph from a story, create a single, vivid, and artistic image prompt. "
-            "Focus on the visual details, a an artistic image prompt. "
             "Focus on the visual details, the atmosphere, the characters' appearance, and the setting. "
             "The prompt should be in English and formatted as a single, continuous sentence or a short paragraph suitable for an advanced text-to-image AI model. "
             "Do not add any explanations or introductory text. Just provide the prompt itself.\n\n"
@@ -61,12 +49,19 @@ def enhance_prompt_with_gemma(paragraph: str) -> str:
         return paragraph
 
 def generate_with_flux(prompt: str) -> bytes:
-    """Generates an image using the primary FLUX/Gradio client (with lazy loading)."""
+    """Generates an image using the primary FLUX client (with lazy loading)."""
     global flux_client
+    
+    # Lazy load and initialize on first call
     if flux_client is None:
-        print("--- Initializing FLUX.1 client for the first time ---")
-        flux_client = Client("black-forest-labs/FLUX.1-Krea-dev")
-        print("--- FLUX.1 Client Initialized ---")
+        print("--- First time initialization: Importing gradio_client and initializing FLUX.1 ---")
+        from gradio_client import Client
+        try:
+            flux_client = Client("black-forest-labs/FLUX.1-Krea-dev")
+            print("--- FLUX.1 Client Initialized ---")
+        except Exception as e:
+            print(f"Error initializing FLUX client: {e}")
+            raise # Re-raise the exception to trigger the fallback
 
     print("--- Attempting Image Generation with FLUX.1 ---")
     result = flux_client.predict(prompt=prompt)
@@ -80,10 +75,22 @@ def generate_with_flux(prompt: str) -> bytes:
 
 def generate_with_gemini(prompt: str) -> bytes:
     """Fallback function to generate an image using Gemini (with lazy loading)."""
-    ensure_google_ai_configured()
-    if not imagen_model:
-        raise Exception("Gemini (Imagen) model is not available.")
+    global imagen_model
     
+    # Lazy load and initialize on first call
+    if imagen_model is None:
+        print("--- First time initialization: Configuring Imagen ---")
+        import google.generativeai as genai
+        try:
+            # Ensure Google AI is configured
+            if not gemma_model: # If gemma hasn't been configured, do it now
+                enhance_prompt_with_gemma("") # This will trigger configuration
+            imagen_model = genai.GenerativeModel('gemini-2.0-flash-preview-image-generation')
+            print("--- Imagen configured successfully ---")
+        except Exception as e:
+            print(f"Error configuring Imagen: {e}")
+            raise
+
     print("--- Attempting Image Generation with Gemini ---")
     final_prompt = f"Generate an image of: {prompt}"
     response = imagen_model.generate_content(final_prompt)
@@ -116,15 +123,12 @@ def generate_image(paragraph: str) -> bytes:
             return None
 
     if not image_bytes:
-        print("--- Image Generation Failed on all services ---")
         return None
     
-    # Process final image bytes to ensure PNG format
     try:
         image = Image.open(io.BytesIO(image_bytes))
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
-        print("--- Image Generation Finished ---")
         return buffer.getvalue()
     except Exception as e_proc:
         print(f"Failed to process the final image: {e_proc}")
