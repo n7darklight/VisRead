@@ -58,7 +58,7 @@ Follow these instructions to set up and run the project on your local machine fo
 
 4.  **Set up your environment variables:**
     * Create a file named `.env` in the root directory of the project.
-    * Copy the contents of `.env.example` (if provided) or add the following keys, replacing the placeholder values with your actual credentials:
+    * Copy the contents of the following example keys, replacing the placeholder values with your actual credentials:
 
     ```env
     # Supabase Credentials
